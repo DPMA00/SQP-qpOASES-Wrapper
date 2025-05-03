@@ -4,7 +4,7 @@ int main()
 {
     
     VectorXreal x(2);
-    x << 100,100;
+    x << 1,-1;
 
     VectorXreal x_ref(2);
     x_ref << 0,0;
