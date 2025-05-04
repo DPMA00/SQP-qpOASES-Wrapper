@@ -13,13 +13,18 @@ class SQP_NLP{
     int w_size;
     int g_size;
     int h_size;
+    int gh_size;
        
 public:
-    SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val);
+    SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val, VectorXreal lbh_value, VectorXreal ubh_value);
 
     VectorXreal Residual(const VectorXreal &z, const VectorXreal &z_ref);
 
     VectorXreal g_constraints(const VectorXreal &z);
+    VectorXreal h_constraints(const VectorXreal &z);
+    VectorXreal set_lbh(const VectorXreal &h_k);
+    VectorXreal set_ubh(const VectorXreal &h_k);
+
     void solve(int max_qp_iter=100, double tol=1e-6);
 
     
@@ -28,12 +33,21 @@ private:
     VectorXreal w;
     VectorXreal previous_step;
     const VectorXreal w_ref;
+    VectorXreal lbh;
+    VectorXreal ubh;
+
 
     std::vector<qpOASES::real_t> flattened_f_grad;
     std::vector<qpOASES::real_t> flattened_B_k;
     std::vector<qpOASES::real_t> flattened_g_Jac;
     std::vector<qpOASES::real_t> flattened_g_eval;
+    std::vector<qpOASES::real_t> flattened_h_Jac;
+    std::vector<qpOASES::real_t> flattened_h_eval;
     std::vector<qpOASES::real_t> A, lbA, ubA;
+    std::vector<qpOASES::real_t> flattened_constraint_Jac;
+    std::vector<qpOASES::real_t> flattened_constraint_lb_eval;
+    std::vector<qpOASES::real_t> flattened_constraint_ub_eval;
+    
 
 
     
