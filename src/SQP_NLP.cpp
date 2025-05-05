@@ -5,7 +5,8 @@
 #include <qpOASES.hpp>
 #include <cstring>
 #include <chrono>
-
+#include <iomanip>
+#include <sstream>
 
 SQP_NLP::SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val,VectorXreal lbh_value, VectorXreal ubh_value)
 : w(w0_val), w_ref(w_ref_val),  w_size(w0_val.size()), flattened_f_grad(w_size), 
@@ -24,6 +25,33 @@ SQP_NLP::SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val,VectorXreal lbh_value
         }
     }
 
+
+void SQP_NLP::print_table(const int iter, const double elapsed_sec)
+{
+    std::ostringstream w_stream;
+    w_stream << std::fixed << std::setprecision(6) << w.transpose();
+    std::string w_str = w_stream.str();
+
+    const int col1 {20};
+    const int col2 {20};
+    const int total_width = col1+col2;
+
+    std::cout << std::string((total_width-30)/2, '#')
+              << "  NLP SOLUTION FOUND  "
+              << std::string((total_width-30)/2, '#') << "\n\n";
+
+    std::cout << std::left
+              << std::setw(col1) << "Nr SQP Iterations"
+              << std::setw(col2) << "Elapsed Time (s)"  << "\n";
+
+    std::cout << std::string(total_width, '-') << "\n";
+
+    std::cout << std::left
+              << std::setw(col1) << iter
+              << std::setw(col2) << std::fixed << std::setprecision(9) << elapsed_sec  << "\n";
+
+
+}
 
 void SQP_NLP::fill_vector_array(size_t length, qpOASES::real_t *array, const Eigen::VectorXd &vector)
 {
@@ -220,7 +248,7 @@ void SQP_NLP::solve_QP_iter(qpOASES::QProblem QP)
 }
 
 
-void SQP_NLP::solve(int max_qp_iter, double tol)
+void SQP_NLP::solve(int max_qp_iter, double tol, int print_level)
 {
     
     qpOASES::QProblem QP(w_size,gh_size);
@@ -237,15 +265,11 @@ void SQP_NLP::solve(int max_qp_iter, double tol)
         {
             auto t2 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed = t2-t1;
-
-            std::cout <<std::endl;
-            std::cout << "#######################   NLP SOLUTION FOUND   #######################" << std::endl;
-            std::cout <<std::endl;
-            std::cout <<"               "<< "      SQP_ITER    |    ELAPSED TIME   "<< std::endl;
-            std::cout <<"               "<< "------------------|-------------------"<< std::endl;
-            std::cout <<"               "<< "         "<<i+1 << "        |    " << elapsed<< "    " << std::endl;
-            std::cout <<std::endl;
-            std::cout << "OPTIMAL SOLUTION W = " << w.transpose() << std::endl;
+            solved_ = true;
+            if (print_level ==1)
+            {
+                print_table(i+1, elapsed.count());
+            }         
             break;
         }
         
@@ -254,3 +278,11 @@ void SQP_NLP::solve(int max_qp_iter, double tol)
     
 }
 
+Eigen::VectorXd SQP_NLP::get_solution()
+{
+    if (!solved_)
+    {
+        throw std::logic_error("Solution not available: call solve() first.");
+    }
+    return w.cast<double>();
+}

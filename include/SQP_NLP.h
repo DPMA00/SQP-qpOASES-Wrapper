@@ -24,9 +24,11 @@ public:
     VectorXreal h_constraints(const VectorXreal &z);
     VectorXreal set_lbh(const VectorXreal &h_k);
     VectorXreal set_ubh(const VectorXreal &h_k);
-
-    void solve(int max_qp_iter=100, double tol=1e-6);
-
+    Eigen::VectorXd get_solution();
+    
+    void solve(int max_qp_iter=100, double tol=1e-6, int print_level = 1);
+    
+    
     
 
 private:
@@ -35,6 +37,7 @@ private:
     const VectorXreal w_ref;
     VectorXreal lbh;
     VectorXreal ubh;
+    bool solved_ = false;
 
 
     std::vector<qpOASES::real_t> flattened_f_grad;
@@ -58,6 +61,8 @@ private:
     real LS_cost(const VectorXreal &z, const VectorXreal &z_ref);
     void define_QP_params();
     void solve_QP_iter(qpOASES::QProblem QP);
+    void print_table(int iter, double elapsed_sec);
+
 
 };
 
