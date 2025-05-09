@@ -7,7 +7,7 @@ As of now the module supports solving simple nonlinear optimization problems usi
 The objective function should be able to be written in least squares form such that a Gauss-Newton Hessian approximation can be used.
 
 ```math 
-f(w_k) = \| R(w_k) \|_2² 
+f(w_k) = \| R(w_k) \|_2^2 
 ```
 ```math
 B_k = J(R(w_k))J(R(w_k))^T
