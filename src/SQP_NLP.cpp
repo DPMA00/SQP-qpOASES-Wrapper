@@ -8,12 +8,24 @@
 #include <iomanip>
 #include <sstream>
 
-SQP_NLP::SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val,VectorXreal lbh_value, VectorXreal ubh_value)
-: w(w0_val), w_ref(w_ref_val),  w_size(w0_val.size()), flattened_f_grad(w_size), 
-        flattened_B_k(2*w_size), g_size(1), h_size(1), flattened_g_Jac(w_size*g_size), flattened_g_eval(g_size),
-        flattened_h_Jac(w_size*h_size), flattened_h_eval(h_size), gh_size(g_size+h_size),
-        flattened_constraint_Jac(0), flattened_constraint_lb_eval(0),  flattened_constraint_ub_eval(0),
-        lbh(lbh_value), ubh(ubh_value)
+SQP_NLP::SQP_NLP(int N, int nx, int nu, int ng, int nh)
+    : w_size {(nx+nu)*N + nx}
+    , flattened_f_grad(w_size)
+    , flattened_B_k(2*w_size)
+    , g_size(ng)
+    , h_size(nh)
+    , flattened_g_Jac(w_size*g_size)
+    , flattened_g_eval(g_size)
+    , flattened_h_Jac(w_size*h_size)
+    , flattened_h_eval(h_size)
+    , gh_size(g_size+h_size)
+    , flattened_constraint_Jac(0)
+    , flattened_constraint_lb_eval(0)
+    , flattened_constraint_ub_eval(0)
+    , lbx_(0)
+    , ubx_(0)
+    , lbu_(0)
+    , ubu_(0)
     
     {
         previous_step.resize(w_size);
@@ -25,6 +37,42 @@ SQP_NLP::SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val,VectorXreal lbh_value
         }
     }
 
+void SQP_NLP::set_initial_guess(const VectorXreal w0_val)
+{
+    w=w0_val;
+}
+
+
+void SQP_NLP::set_reference(const VectorXreal w_ref_val)
+{
+    if (w_ref_val.size() != w_size)
+    {
+        std::cerr << "Incompatible dimensions: \"w\"=" << w_size << ", " << "\"w_ref\"" << w_ref_val.size() << "\n";
+        std::exit(EXIT_FAILURE);
+    }
+    else
+    {
+        w_ref = w_ref_val;
+    }
+}
+
+
+void SQP_NLP::set_x_bounds(VectorXreal lbx_value, VectorXreal ubx_value)
+{
+    lbx(lbx_value);
+    ubx(ubx_value);
+}
+void SQP_NLP::set_u_bounds(VectorXreal lbu_value, VectorXreal ubu_value)
+{
+    lbu(lbu_value);
+    ubu(ubu_value);
+
+}
+void SQP_NLP::set_h_bounds(VectorXreal lbh_value, VectorXreal ubh_value)
+{
+    lbh=lbh_value;
+    ubh=ubh_value;
+}
 
 void SQP_NLP::print_table(const int iter, const double elapsed_sec)
 {
@@ -77,25 +125,25 @@ void SQP_NLP::fill_matrix_array(size_t length, qpOASES::real_t *array, const Eig
     }
 }
 
+
+
+
 real SQP_NLP::LS_cost(const VectorXreal &z, const VectorXreal &z_ref)
 {
-    return 0.5* Residual(z,z_ref).squaredNorm();
+    return 0.5* residual(z,z_ref).squaredNorm();
 }
 
-VectorXreal SQP_NLP::g_constraints(const VectorXreal &z)
+void SQP_NLP::set_residual_expr(ResidualFunc f)
 {
-    VectorXreal r(1);
-    r(0) = sin(z(0))-pow(z(1),2);
-
-    return r;
+    residual = f;
 }
-
-VectorXreal SQP_NLP::h_constraints(const VectorXreal &z)
+void SQP_NLP::set_g_expr(EqualityFunc g)
 {
-    VectorXreal r(1);
-    r(0) = pow(z(0),2) + pow(z(1),2) - 4;
-
-    return r;
+    g_constr = g;
+}
+void SQP_NLP::set_h_expr(InequalityFunc h)
+{
+    h_constr = h;
 }
 
 VectorXreal SQP_NLP::set_lbh(const VectorXreal &h_k)
@@ -110,22 +158,14 @@ VectorXreal SQP_NLP::set_ubh(const VectorXreal &h_k)
 
 }
 
-VectorXreal SQP_NLP::Residual(const VectorXreal &z, const VectorXreal &z_ref)
-{
-    VectorXreal r(2);
-    r(0) = z(0)-4;
-    r(1) = z(1)-4;
-    return r; //w-w_ref;
-}
-
 void SQP_NLP::define_QP_params()
 {
     flattened_constraint_lb_eval.clear();
     flattened_constraint_ub_eval.clear();
     flattened_constraint_Jac.clear();
-
+    
     auto Residual_bound = [this](VectorXreal& z, VectorXreal &z_ref) {
-        return Residual(z, z_ref);
+        return residual(z, z_ref);
     };
     
     auto LS_cost_bound = [this](VectorXreal& z, VectorXreal &z_ref) {
@@ -133,26 +173,26 @@ void SQP_NLP::define_QP_params()
     };
 
     auto g_constraints_bound = [this](VectorXreal &z) {
-        return g_constraints(z);
+        return g_constr(z);
     };
 
     auto h_constraints_bound = [this](VectorXreal &z) {
-        return h_constraints(z);
+        return h_constr(z);
     };
 
     VectorXreal z = w;
     VectorXreal z_ref = w_ref;
-
+    
     // Gradient of the LS Objective
     real LS_cost_eval;                                     
     Eigen::VectorXd LS_cost_grad;
     gradient(LS_cost_bound, wrt(z), at(z, z_ref), LS_cost_eval, LS_cost_grad);
-
+    
     // Jacobian of the Residual R(w)
     Eigen::MatrixXd R_Jac;
     VectorXreal Res_eval;
     jacobian(Residual_bound, wrt(z), at(z, z_ref), Res_eval, R_Jac);
-
+    
     // Jacobian of the equality constraints
     VectorXreal g_k;
     Eigen::MatrixXd g_Jac;
@@ -163,20 +203,22 @@ void SQP_NLP::define_QP_params()
     {
         g_k(i)*=-1;
     }
-
+    
     // Jacobian of the inequality constraints
     VectorXreal h_k;
     Eigen::MatrixXd h_Jac;
     jacobian(h_constraints_bound, wrt(z), at(z), h_k, h_Jac);
-
+    
     // Gauss-Newton Hessian approximation
     Eigen::MatrixXd B_k;
     B_k = R_Jac.transpose()*R_Jac;
-
+    
     VectorXreal lbh_QP = set_lbh(h_k);
     VectorXreal ubh_QP = set_ubh(h_k);
-
+    
+   
     fill_vector_array(w_size, flattened_f_grad.data(), LS_cost_grad);
+    
     fill_matrix_array(2*w_size, flattened_B_k.data(), B_k);
     fill_matrix_array(g_size*w_size, flattened_g_Jac.data(), g_Jac.transpose());
     fill_vector_array(g_size, flattened_g_eval.data(), g_k);
@@ -195,6 +237,7 @@ void SQP_NLP::define_QP_params()
     flattened_constraint_Jac.insert(flattened_constraint_Jac.end(),flattened_g_Jac.begin(), flattened_g_Jac.end());
     flattened_constraint_Jac.insert(flattened_constraint_Jac.end(),flattened_h_Jac.begin(), flattened_h_Jac.end());
 
+    
 
 }
 

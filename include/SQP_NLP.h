@@ -4,27 +4,31 @@
 #include <autodiff/forward/real.hpp>
 #include <autodiff/forward/real/eigen.hpp>
 #include <qpOASES.hpp>
-
+#include <functional>
 
 using VectorXreal = autodiff::VectorXreal;
 using real = autodiff::real;
+using ResidualFunc = std::function<VectorXreal(const VectorXreal&, const VectorXreal&)>;
+using EqualityFunc = std::function<VectorXreal(const VectorXreal&)>;
+using InequalityFunc = std::function<VectorXreal(const VectorXreal&)>;
+
 
 class SQP_NLP{
-    int w_size;
-    int g_size;
-    int h_size;
-    int gh_size;
-       
 public:
-    SQP_NLP(VectorXreal w0_val, VectorXreal w_ref_val, VectorXreal lbh_value, VectorXreal ubh_value);
-
-    VectorXreal Residual(const VectorXreal &z, const VectorXreal &z_ref);
-
-    VectorXreal g_constraints(const VectorXreal &z);
-    VectorXreal h_constraints(const VectorXreal &z);
-    VectorXreal set_lbh(const VectorXreal &h_k);
-    VectorXreal set_ubh(const VectorXreal &h_k);
+    SQP_NLP(int N, int nx, int nu, int ng, int nh);
+    
     Eigen::VectorXd get_solution();
+    
+    void set_initial_guess(const VectorXreal w0_val);
+    void set_reference(const VectorXreal w_ref_val);
+    void set_x_bounds(VectorXreal lbx_value, VectorXreal ubx_value);
+    void set_u_bounds(VectorXreal lbu_value, VectorXreal ubu_value);
+    void set_h_bounds(VectorXreal lbh_value, VectorXreal ubh_value);
+
+    void set_residual_expr(ResidualFunc f);
+    void set_g_expr(EqualityFunc g);
+    void set_h_expr(InequalityFunc h);
+    
     
     void solve(int max_qp_iter=100, double tol=1e-6, int print_level = 1);
     
@@ -34,9 +38,15 @@ public:
 private:
     VectorXreal w;
     VectorXreal previous_step;
-    const VectorXreal w_ref;
-    VectorXreal lbh;
-    VectorXreal ubh;
+    VectorXreal w_ref;
+    VectorXreal lbh, ubh;
+    ResidualFunc residual;
+    EqualityFunc g_constr;
+    InequalityFunc h_constr;
+
+    const VectorXreal lbx, ubx, lbu, ubu;
+    int w_size, g_size, h_size, gh_size;
+       
     bool solved_ = false;
 
 
@@ -47,13 +57,15 @@ private:
     std::vector<qpOASES::real_t> flattened_h_Jac;
     std::vector<qpOASES::real_t> flattened_h_eval;
     std::vector<qpOASES::real_t> A, lbA, ubA;
+    std::vector<qpOASES::real_t> lbx_, ubx_, lbu_, ubu_;
     std::vector<qpOASES::real_t> flattened_constraint_Jac;
     std::vector<qpOASES::real_t> flattened_constraint_lb_eval;
     std::vector<qpOASES::real_t> flattened_constraint_ub_eval;
     
 
 
-    
+    VectorXreal set_lbh(const VectorXreal &h_k);
+    VectorXreal set_ubh(const VectorXreal &h_k);
     void fill_vector_array(size_t length, qpOASES::real_t *array, const Eigen::VectorXd &vector);
     void fill_matrix_array(size_t length, qpOASES::real_t *array, const Eigen::MatrixXd &matrix);
     void fill_vector_array(size_t length, qpOASES::real_t *array, const VectorXreal &vector);
