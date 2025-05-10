@@ -16,6 +16,7 @@ using InequalityFunc = std::function<VectorXreal(const VectorXreal&)>;
 class SQP_NLP{
 public:
     SQP_NLP(int N, int nx, int nu, int ng, int nh);
+    bool debugger_ = false;
     
     Eigen::VectorXd get_solution();
     
@@ -32,7 +33,7 @@ public:
     
     void solve(int max_qp_iter=100, double tol=1e-6, int print_level = 1);
     
-    
+    void define_QP_params();
     
 
 private:
@@ -63,7 +64,7 @@ private:
     std::vector<qpOASES::real_t> flattened_constraint_ub_eval;
     
 
-
+    void isPSD(size_t length, const double H[]);
     VectorXreal set_lbh(const VectorXreal &h_k);
     VectorXreal set_ubh(const VectorXreal &h_k);
     void fill_vector_array(size_t length, qpOASES::real_t *array, const Eigen::VectorXd &vector);
@@ -71,7 +72,7 @@ private:
     void fill_vector_array(size_t length, qpOASES::real_t *array, const VectorXreal &vector);
 
     real LS_cost(const VectorXreal &z, const VectorXreal &z_ref);
-    void define_QP_params();
+    
     void solve_QP_iter(qpOASES::QProblem QP);
     void print_table(int iter, double elapsed_sec);
 

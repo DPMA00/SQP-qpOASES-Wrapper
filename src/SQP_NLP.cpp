@@ -7,11 +7,13 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <Eigen/Eigenvalues>
 
 SQP_NLP::SQP_NLP(int N, int nx, int nu, int ng, int nh)
     : w_size {(nx+nu)*N + nx}
+    , previous_step(w_size)
     , flattened_f_grad(w_size)
-    , flattened_B_k(2*w_size)
+    , flattened_B_k(w_size*w_size)
     , g_size(ng)
     , h_size(nh)
     , flattened_g_Jac(w_size*g_size)
@@ -37,6 +39,30 @@ SQP_NLP::SQP_NLP(int N, int nx, int nu, int ng, int nh)
         }
     }
 
+
+
+
+void SQP_NLP::isPSD(size_t length, const double H[])
+{
+    int n = sqrt(length);
+
+    Eigen::MatrixXd H_mat(n, n); 
+    for (int i {0} ; i < n ; ++i)
+    {
+        for (int j {0} ; j < n; ++j)
+        {
+            H_mat(i,j) = H[i*n+j];
+        }
+    }
+    std::cout << H_mat << "\n";
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(H_mat);
+    if ((es.eigenvalues().array() < -1e10).any())
+    {
+        std::cerr << "Hessian is not positive-semidefinite" << std::endl;
+    }
+}
+
+
 void SQP_NLP::set_initial_guess(const VectorXreal w0_val)
 {
     w=w0_val;
@@ -55,6 +81,7 @@ void SQP_NLP::set_reference(const VectorXreal w_ref_val)
         w_ref = w_ref_val;
     }
 }
+
 
 
 void SQP_NLP::set_x_bounds(VectorXreal lbx_value, VectorXreal ubx_value)
@@ -219,7 +246,7 @@ void SQP_NLP::define_QP_params()
    
     fill_vector_array(w_size, flattened_f_grad.data(), LS_cost_grad);
     
-    fill_matrix_array(2*w_size, flattened_B_k.data(), B_k);
+    fill_matrix_array(w_size*w_size, flattened_B_k.data(), B_k);
     fill_matrix_array(g_size*w_size, flattened_g_Jac.data(), g_Jac.transpose());
     fill_vector_array(g_size, flattened_g_eval.data(), g_k);
     fill_matrix_array(h_size*w_size, flattened_h_Jac.data(), h_Jac.transpose());
@@ -238,7 +265,7 @@ void SQP_NLP::define_QP_params()
     flattened_constraint_Jac.insert(flattened_constraint_Jac.end(),flattened_h_Jac.begin(), flattened_h_Jac.end());
 
     
-
+    
 }
 
 
@@ -246,15 +273,15 @@ void SQP_NLP::solve_QP_iter(qpOASES::QProblem QP)
 {
     define_QP_params();
 
-    qpOASES::real_t H[2*w_size];
-    std::memcpy(H, flattened_B_k.data(), 2*w_size * sizeof(qpOASES::real_t));
+    qpOASES::real_t H[w_size*w_size];
+    std::memcpy(H, flattened_B_k.data(), w_size*w_size * sizeof(qpOASES::real_t));
 
-
+    if(debugger_) isPSD(w_size*w_size, H);
     qpOASES::real_t g[w_size];
     std::memcpy(g, flattened_f_grad.data(), w_size * sizeof(qpOASES::real_t));  
     
-    qpOASES::real_t lb[2] = {-1e5, -1e5};
-    qpOASES::real_t ub[2] = { 1e5,  1e5};
+    qpOASES::real_t lb[4] = {-1e5, -1e5, -1e5, -1e5};
+    qpOASES::real_t ub[4] = { 1e5,  1e5, 1e5, 1e5};
 
 
     qpOASES::real_t* A_ptr = nullptr;
@@ -271,11 +298,6 @@ void SQP_NLP::solve_QP_iter(qpOASES::QProblem QP)
         lbA_ptr = lbA.data();
         ubA_ptr = ubA.data();
     }
-
-    
-
-    
-
     
     int nWSR = 10;
     qpOASES::returnValue status = QP.init(H, g, A_ptr, lb, ub, lbA_ptr, ubA_ptr, nWSR);
@@ -286,8 +308,14 @@ void SQP_NLP::solve_QP_iter(qpOASES::QProblem QP)
     qpOASES::real_t xOpt [w_size];
     QP.getPrimalSolution(xOpt);
 
-    previous_step(0) = xOpt[0];
-    previous_step(1) = xOpt[1];
+    VectorXreal step(w_size);
+
+    for (int i {0}; i<w_size;++i)
+    {
+        step(i) = xOpt[i];
+    }
+
+    previous_step= step;
 }
 
 
